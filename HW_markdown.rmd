@@ -1,0 +1,377 @@
+---
+title: "Mid Term"
+author: "Muhammad Bashir, Andrew Issa, Tejaswini Suresh Gaikwad"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  pdf_document:
+    number_sections: yes
+    toc: yes
+  html_document:
+    self_contained: no
+    df_print: paged
+    toc: yes
+---
+\newpage
+
+# Exercise-I
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Question-1
+The model given is 
+\[y=\tilde{\beta_{0}}+\tilde{\beta_1}x_{1}+\tilde{u}\]
+From M1 and data generating process, we know that $cov(x_{1},x_{2})\neq0$ and therefore M2 suffers from endogeneity because error term $\tilde{u}$ contains $x_{2}$ and therefore we have omitted variable bias. Therefore, given data generating process, M2 does not satisfy Gauss-Markov Assumption for conditional independence or exogeneity. If we estimate this model using OLS, we would not get causal effect of $x_{1}$ on y as $(M2)$ suffers from OVB. 
+
+## Question-2
+
+Suppose we estimate M2 using OLS, then we know from Lecture-1
+\[plim_{n->\infty}(\hat{\tilde{\beta_1}})=\beta_{1}+\frac{Cov(\tilde{u},x_{1})}{V(x_{1})}\]
+And we know from GDP that $\tilde{u}=\beta_{2}x_{2}+u$ and thereore $Cov(\tilde{u},x_{1})=Cov(\beta_{2}x_{2}+u,x_{1})=\beta_{2}Cov(x_{2},x_{1})+Cov(x_{1},u)$
+and from data generating process we know that $Cov(x_{1},u)=0$ and therefore,
+\[plim_{n->\infty}(\hat{\tilde{\beta_1}})=\beta_{1}+\beta_{2}\frac{Cov(x_{1},x_{2})}{V(x_{1})}\]
+Since, from data generating process, we know $Cov(x_{1},x_{2})\neq0$ and $\beta_{2}\neq0$, $\tilde{\beta_{1}}$ does not identify $\beta_{1}$.
+From M1, we know that true value of $\beta_{1}=1,\beta_{2}=2,Cov(x_{1},x_{2})=0.5,V(x_{1})=1$.
+Hence, the probability limit would be 1+2*0.5=2 instead of true value of 1. 
+
+
+## Preliminaries
+Here, I import important libraries.
+
+```{r cars}
+rm(list = ls())
+library(MASS)
+library(ivreg)
+library(latex2exp)
+library(haven)
+library(tidyverse)
+library(readxl)
+library(dplyr)
+library(stargazer)
+library(lmtest)
+library(sandwich)
+```
+
+## Defining Variance-Covariance Matrix
+
+In order to define Sigma, I first generate an identity matrix of size 5x5.
+
+```{r VC Matrix, include=TRUE}
+n=1000
+Sigma=diag(5)
+Sigma[1,2]=0.5
+Sigma[2,1]=0.5
+Sigma[1,3]=0.8
+Sigma[3,1]=0.8
+Sigma[1,4]=0.1
+Sigma[4,1]=0.1
+Sigma[1,5]=0.4
+Sigma[5,1]=0.4
+Sigma[2,5]=0.6
+Sigma[5,2]=0.6
+Sigma
+```
+## Define Data Generating Process
+```{r DGP,include=TRUE}
+DGP<-function(n,Sigma){
+  data=mvrnorm(n, mu=rep(0,5), Sigma)
+  data<- as.data.frame(data)
+  colnames(data)<-c("x1","x2","z1","z2","z3")
+  return(data)
+}
+```
+## Question-3
+```{r Q3, include=TRUE}
+set.seed(12)
+data=DGP(n,Sigma)
+head(data)
+u=rnorm(n)
+data$y=5+data$x1+2*data$x2+u
+M2=lm(y~x1,data=data)
+M2
+m=summary(M2)
+m$coefficients
+```
+
+
+We observe positive bias in $\hat{\tilde{\beta_{1}}}$ because $x_{1}$ and $x_{2}$ are positively correlated and $\beta_{2}$ is also positive. It is not close to its population value because we knew that model is not identified correctly. We argued in Q-1 that it should be close to 2 and that is the case.
+
+## Question-4
+
+``` {r Question-4, include=TRUE}
+R=25000
+beta_se=matrix(0,R,2)
+dim(beta_se)
+set.seed(42)
+data=DGP(n,Sigma)
+for (i in 1:R){
+  set.seed(i)
+  u=rnorm(n)
+  data$y=5+data$x1+2*data$x2+u
+  M2=lm(y~x1,data=data)
+  m=summary(M2)
+  beta_se[i,1]=m$coefficients[2,1]
+  beta_se[i,2]=m$coefficients[2,2]
+  }
+mean(beta_se[,1])
+mean(beta_se[,2])
+hist(beta_se[,1],main=TeX(r'(Asymptotic Distribution of $\hat{\tilde{\beta_{1}}}$)'),xlab=TeX(r'($\hat{\tilde{\beta_{1}}}$)'),xlim=c(1.85,2.1),breaks=70)
+abline(v=2,col="blue",lwd=2)
+
+```
+
+We see that mean of simulated values is 1.987105 which is very close to 2. We clearly see that this estimator is converging to a value of 2 which is what theory predicts. And yes, it was completely expected. Since model suffers from OVB, this does not converge to true value of $\beta_{1}$ which is 1.
+
+## Question-5
+
+$z_{1}$ is best instrument for $x_{1}$ in this case because this is highly correlated with $x_{1}$ and is not correlated with $x_{2}$ and therefore $Cov(\tilde{u},z_{1})=0$ and hence satisfies the exclusion restriction as well.
+$z_{3}$ is correlated with $x_{2}$ and therefore does not satisfy exclusion restriction. $z_{2}$ on the other hand, has very weak correlation with the $x_{1}$ and therefore is a weak instrument despite the fact that it satisfies exclusion restriction. Hence, $z_{3}$ is worst instrument while $z_{1}$ is best instrument.
+
+## Question-6
+
+```{r Q.6,include=TRUE}
+set.seed(42)
+u=rnorm(n)
+data=DGP(n,Sigma)
+data$y=5+data$x1+data$x2+u
+iv1=ivreg(y~x1|z1,data=data)
+iv2=ivreg(y~x1|z2,data=data)
+iv3=ivreg(y~x1|z3,data=data)
+iv4=ivreg(y~x1|z1+z2+z3,data=data)
+stargazer(iv1,iv2,iv3,iv4,type='text',add.lines=list(c("Instrument used","z1","z2","z3","z1,z2 and z3")))
+```
+
+
+We see that when we use $z_{1}$ as IV, we get 0.963 which is close to true value of 1. $z_{3}$ substantially overestimates $\beta_{1}$ because it is positively correlated with $x_{2}$. When we use all three together as IVs, it is better than using $z_{3}$. When using all three togather, we get minimum standard erros which is expected because this includes $z_{1}$ as well. $z_{1}$ also has very small SE and is very good IV. $z_{2}$ is a relatively weak IV and $z_{3}$ does not even identify true $\beta_{1}$. 
+
+## Question-7
+
+``` {r Q.7, include=TRUE}
+R=25000
+data1=matrix(0,R,2)
+data2=matrix(0,R,2)
+data3=matrix(0,R,2)
+data4=matrix(0,R,2)
+set.seed(42)
+data=DGP(n,Sigma)
+beta_se=matrix(0,R,2)
+for (i in 1:R){
+  set.seed(i)
+  u=rnorm(n)
+  data$y=5+data$x1+2*data$x2+u
+  iv1=ivreg(y~x1|z1,data=data)
+  iv2=ivreg(y~x1|z2,data=data)
+  iv3=ivreg(y~x1|z1+z2,data=data)
+  data1[i,1]=summary(iv1)$coefficients[2,1]
+  data1[i,2]=summary(iv1)$coefficients[2,2]
+  data2[i,1]=summary(iv2)$coefficients[2,1]
+  data2[i,2]=summary(iv2)$coefficients[2,2]
+  data3[i,1]=summary(iv3)$coefficients[2,1]
+  data3[i,2]=summary(iv3)$coefficients[2,2]
+}
+mean(data1[,1])
+mean(data2[,1])
+mean(data3[,1])
+hist(data1[,1],main=TeX("Using $z_{1}$ as IV"),xlab=TeX(r'($\hat{\tilde{\beta_{1}}}^{IV}$)'),breaks=30,xlim=c(0.8,1.2))
+abline(v=1,col="blue",lwd=2)
+hist(data2[,1],main=TeX("Using $z_{2}$ as IV"),xlab=TeX(r'($\hat{\tilde{\beta_{1}}}^{IV}$)'),breaks=30)
+abline(v=1,col="blue",lwd=2)
+hist(data3[,1],main=TeX("Using $z_{1}$ and $z_{2}$ as IV"),xlab=TeX(r'($\hat{\tilde{\beta_{1}}}^{IV}$)'),breaks=30,xlim=c(0.8,1.2))
+abline(v=1,col="blue",lwd=2)
+```
+
+As expected, $z_{1}$, $z_{2}$ and $z_{1} + z_{2}$ all converge to true value of 1 because they satisfy exclusion restriction. However, $z_{1}$ has less variance or dispersion because it is highly correlated with $x_{1}$ while $z_{2}$ has small correlation which means it has more variance.  Using both together as an instrument, reduces variance compared to both seperately. This was expected given $\Sigma$ matrix. 
+
+## Question-8
+
+### Question-4'
+
+``` {r Question--8-Q.4--Simulation Study, include=TRUE}
+R=25000
+n=30
+Sigma[1,2]=Sigma[2,1]=0
+set.seed(12)
+data=DGP(n,Sigma)
+beta_se=matrix(0,R,2)
+for (i in 1:R){
+  set.seed(i)
+  u=rnorm(n)
+  data$y=5+data$x1+2*data$x2+u
+  M2=lm(y~x1,data=data)
+  m=summary(M2)
+  beta_se[i,1]=m$coefficients[2,1]
+  beta_se[i,2]=m$coefficients[2,2]
+  }
+mean(beta_se[,1])
+mean(beta_se[,2])
+hist(beta_se[,1],main=TeX(r'(Asymptotic Distribution of $\hat{\tilde{\beta_{1}}}$)'),xlab=TeX(r'($\hat{\tilde{\beta_{1}}}$)'),breaks=30)
+abline(v=1,col="blue",lwd=2)
+```
+
+Since sample size is very small and $x_{2}$ explains major part of y, we do not observe convergence in this small sample to true value of 1. However, in large samples, it does converge.The mean of estimated values is 0.59 and mean estimated SE is 0.32.This was not expected and when I vary sample size, I do observe convergence. This shows that mispecification of form of regression might create problems when sample size is small although Gauss-Markov assumptions hold. 
+
+## Question-8-5'
+When we set $\sigma_{x_{1}x_{2}}=0$, then M2 does not suffer from endogeneity because $x_{1}$ is not correlated with $x_{2}$ and we do not need to use IVs for estimation.
+Since $z_{3}$ is correlated with $x_{2}$, it does not satisfy exclusion restriction and therefore cannot act as IV and would not converge to true value.
+The one with highest correaltion with $x_{1}$ would be best IV.
+Therefore,$z_{1},z_{2}$ satisfy exclusion while $z_{1}$ has highest correlation because covariance is highest and variance in every case is 1 and that is why I just compare covariance instead of correlation. Therefore, $z_{1}$ is best IV in this case and while $z_{3}$ is worst IV.
+
+## Question-8-6'
+```{r Q.8--6,include=TRUE}
+set.seed(42)
+data=DGP(n,Sigma)
+u=rnorm(n)
+data$y=5+data$x1+2*data$x2+u
+iv1=ivreg(y~x1|z1,data=data)
+iv2=ivreg(y~x1|z2,data=data)
+iv3=ivreg(y~x1|z3,data=data)
+iv4=ivreg(y~x1|z1+z2+z3,data=data)
+stargazer(iv1,iv2,iv3,iv4,type='text',column.labels=c("z1","z2","z3","z1,z2 and z3"))
+```
+
+We see that as expected, $z_{1}$ estimates true effect better than other two or three combined, and this was expected because $z_{1}$ has highest correlation with $x_{1}$ and satisfies exclusion restriction. The IV estimator using $z_{1}$ has smallest standard error as well except the case where we use all three as IV, but we see a clear asymptotic bias in that case and little improved SE is simply because we are using more regressors. $z_{3}$ has severe asymptotic bias because it does not satisfy exclusion restriction and is correlated with error term. 
+
+## Question-8-7'
+``` {r Q.8--7, include=TRUE}
+data1=matrix(0,R,2)
+data2=matrix(0,R,2)
+data3=matrix(0,R,2)
+data4=matrix(0,R,2)
+set.seed(42)
+data=DGP(n,Sigma)
+for (i in 1:R){
+  set.seed(i)
+  u=rnorm(n)
+  data$y=5+data$x1+2*data$x2+u
+  iv1=ivreg(y~x1|z1,data=data)
+  iv2=ivreg(y~x1|z2,data=data)
+  iv3=ivreg(y~x1|z1+z2,data=data)
+  data1[i,1]=summary(iv1)$coefficients[2,1]
+  data1[i,2]=summary(iv1)$coefficients[2,2]
+  data2[i,1]=summary(iv2)$coefficients[2,1]
+  data2[i,2]=summary(iv2)$coefficients[2,2]
+  data3[i,1]=summary(iv3)$coefficients[2,1]
+  data3[i,2]=summary(iv3)$coefficients[2,2]
+}
+mean(data1[,1])
+mean(data2[,1])
+mean(data3[,1])
+hist(data1[,1],main=TeX("Using $z_{1}$ as IV"),xlab=TeX(r'($\hat{\tilde{\beta_{1}}}$)'),breaks=30)
+abline(v=1,col="blue",lwd=2)
+hist(data2[,1],main=TeX("Using $z_{2}$ as IV"),xlab=TeX(r'($\hat{\tilde{\beta_{1}}}$)'),breaks=30)
+abline(v=1,col="blue",lwd=2)
+hist(data3[,1],main=TeX("Using $z_{1}$ and $z_{2}$ as IV"),xlab=TeX(r'($\hat{\tilde{\beta_{1}}}$)'),breaks=30)
+abline(v=1,col="blue",lwd=2)
+
+```
+
+We observe that $z_{2}$ performs relatively better although sample size is small. In general we know that IV estimator is not unbiased in small samples and that would be potential reason for bias in all three scenarios. However, the smaller bias in $z_2$ is just because of chance. Since sample size is very small, we should not expect IV estimators to reveal real properties.  
+
+# Exercise-II
+
+## Research Question
+\begin{itemize}
+\item Do counties with intensive social media campaign have less COVID-19 infections compared to control group?
+\item Do residents of counties with intensive social media campaigns tend to stay more at home compared to control group?
+\item Do residents of counties with intensive social media campaigns tend to move less compared to control group?
+\end{itemize}
+
+## Question-1
+
+We know that both variables of interest, staying at home due to public campaign by experts and
+COVID-19 cases are determined by many factors other than influence of experts. Different families and areas differ in
+their income size, types of jobs, beliefs and past experience, political leanings and other factors that also determine
+these outcomes of interest i.e public's risk behavior towards COVID, participation in outdoor activities over the vacations and COVID-19 spread. Therefore, in order to find causal impact of campaign, we actually need to run a randomized control trials so that this endogeneity is addressed. 
+Possible research question would be, Does exposure to video messages from experts encouraging for staying at home change mobility decisions and travel around two vacation occasions i.e Thanks Giving and Christmas Holiday? 
+The authors needed to randomize it at zip code or state level given enormous similarities in families in a given area and household. This also helps us reduce movement across treatment arms or spill-overs which would lead to severe contaminatin if we randomized it at individual level.
+
+## Question-2
+
+``` {r Question-2,include=TRUE}
+set.seed(1234)
+setwd("C:/bashar/Microeconometrics/mid term")
+data1=read_dta("fb_movement_data.dta")
+data2=read_excel("randomized_sample_thanksgiving.xlsx")
+names(data1)[1] <- "county"
+data1$county=as.integer(data1$county)
+data2$county=as.integer(data2$county)
+data2=data2 %>%group_by(county) %>% mutate(total=n())
+data2=data2 %>%group_by(county) %>% mutate(s= sum(urban))
+data2$more_urban=data2$s>data2$total/2
+data2=subset(data2,select=-c(total,s,urban,treat,zip,state))
+data2=data2[!duplicated(data2),]
+
+merge=merge(x=data1,y=data2, by = "county",all.y=TRUE)
+rm("data1","data2")
+merge$stay_home=100*merge$stay_home
+dat=distinct(subset(merge, select =c(county_name,date,movement_ch,stay_home,high_county,more_urban)))
+head(dat)
+dat=dat[dat$date>"2020-11-22" & dat$date<"2020-11-25",]
+dat$left_home=100-dat$stay_home
+dat$county_name.f=factor(dat$county_name)
+```
+
+We note that in 2020, thanks giving was on 26th November. When we merge, we need to keep entire treatment data. However, we do not have outcome data for 62 counties or 232 zip codes.If this is non-random, our results might be biased. However, authors argue that these areas have very small number of facebook users and therefore would not substainally effect our estimate of average treat effect.
+
+I use the variable more_urban as control because this controls for the fact if a county is overwhelmingly urban or not. This is important because we know COVID-19 infections behave differently between urban and rural areas because there is more interaction in urban areas. Moreover, people in rural and urban counties may be systematically different which comes up when we address treatment effect hetrogeneity. 
+The important variable to use as control in expainging share of individuals staying home would be county specific fixed effects because poeple in different counties may have different behaviours regarding going out. 
+
+## Question-3
+``` {r E2:Question-3,include=TRUE}
+model1 =lm(movement_ch~high_county,data=dat)
+model2=lm(stay_home~high_county,data=dat)
+model3=lm(stay_home~high_county+more_urban,data=dat)
+stargazer(model1,model2,model3,dep.var.labels=c("Movement","Stay Home","Stay Home"),keep=c("high_county","more_urban","I(high_county*more_urban)","Constant"),type='text',title="Treatment effects with traditional standard errors",covariate.labels=c("High Intensity County","County is more urban"))
+```
+
+Following authors, I just observations between '2020-11-22' to '2020-11-22-25' to calculate impact at thanks giving. This is the time we were targeting with our intervention as to how people owuld behave right before thanks giving vacations. 
+
+We observe that on average, counties with high intensity treatment tend to have less movement by 0.007. Moreover, the percentage of people staying home goes up by 0.080 percentage points in high intensity counties and this effect reduces to 0.065 when we introduce control of more_urban.  However, in all three model specifications, effect is not statistically significant and we cannot say that it is significantly different from 0. This would mean that we would not even get a significant result from HC or clustered standard errors because that would increase standard erros in general. 
+
+
+## Question-4
+``` {r E2: Question-4,include=TRUE}
+model1 =lm(movement_ch~high_county,data=dat)
+model2=lm(stay_home~high_county,data=dat)
+model3=lm(stay_home~high_county+more_urban,data=dat)
+model1=coeftest(model1,vcovHC(model1,type=c("HC1")))
+model2=coeftest(model2,vcovHC(model2,type=c("HC1")))
+model3=coeftest(model3,vcovHC(model3,type=c("HC1")))
+stargazer(model1,model2,model3,column.labels=c("Movement","Stay Home","Stay Home"),type='text',keep=c("high_county","more_urban","Constant"),title=c("Using Hetroskedasticity Robust Standard Errors"),
+        covariate.labels=c("High Intensity County","County is more urban"))
+```
+
+After introducing hetroskadasticity robust standard errors, the effect is obviously still insignificant and there is little change standard errors. 
+
+## Question-5
+
+``` {r E2:Question-5,include=TRUE}
+model1 =lm(movement_ch~high_county,data=dat)
+model2=lm(stay_home~high_county,data=dat)
+model3=lm(stay_home~high_county+more_urban,data=dat)
+model4=lm(stay_home~high_county+county_name.f,data=dat)
+model1=coeftest(model1,vcovCL(model1,cluster = ~county_name))
+model2=coeftest(model2,vcovCL(model2,cluster = ~county_name))
+model3=coeftest(model3,vcovCL(model3,cluster = ~county_name))
+model4=coeftest(model4,vcovCL(model4,cluster = ~county_name))
+stargazer(model1,model2,model3,model4,keep=c("high_county","more_urban","Constant"),title="Results using Cluster Standard Errors",type='text',add.lines =list(c("County Fixed Effects","No","No","No","Yes")),column.labels=c("Movement","Stay Home","Stay Home","Stay Home"))
+```
+
+When we cluster standard errors around county of observation, the standard error goesup  and therefore result still remains insignificant. We are clustering at county level because other observed factors for observations from a given county are going to be correlated. When we control for county fixed effects, the treatment effect still remains insignificant. 
+
+## Question-6
+For treatment effect hetrogeneity across rural and urban areas, we add a new regressor as a interaction between urban dummy and treatment dummy. So, our model becomes
+\[y_{it}=\beta_{0}+\beta_{1}*high\_county_{i}+\tau *urban_{i}+\epsilon_{it}\]
+where $y_{it}$ denotes outcome variable for county i on date t, $\beta_{1}$ is average treatment effect for rural counties while $\beta_{1}+\tau$ is treatment effect for urban counties. Here again, we cluster standard errors with respect to county.
+
+``` {r E2: Question-6,include=TRUE}
+model1 =lm(movement_ch~high_county+I(high_county*more_urban),data=dat)
+model2=lm(stay_home~high_county+I(high_county*more_urban),data=dat)
+model1=coeftest(model1,vcovCL(model1,cluster = ~county_name))
+model2=coeftest(model2,vcovCL(model2,cluster = ~county_name))
+stargazer(model1,model2,title="Results using Cluster Standard Errors",type='text',add.lines = list(c("N", nrow(dat), nrow(dat))),column.labels=c("Movement","Stay Home","Stay Home"))
+```
+
+We now observe that although still insignificant, the symbol of treatment effect for rural counties is reversed compared to average effect we were getting before. This shows that treatment actually had opposite results on rural areas than we expected. 
+
+We observe that coefficient on interaction term is significant for movement and therefore there is hetrogeneity in treatment effect. This also shows that the rural areas actually have positive treatment effect while urban areas have net negative treatment effect. However, treatment effect for rural areas is not significant. Similarly, people in high intensity but rural counties tend to stay home less while urban counties with treatment have increase in people staying home. However, these effects are also not statistically significant. 
+
